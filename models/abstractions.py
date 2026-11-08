@@ -3,11 +3,6 @@ from dataclasses import dataclass
 from enum import Enum
 
 
-class TileType(Enum):
-    Quad = "quad"
-    Hex = "hex"
-
-
 class GroundType(Enum):
     Plain = "plain"
     Wall = "wall"
@@ -41,10 +36,7 @@ class Ground(ABC):
 
 @dataclass
 class WorldConfig:
-    tile_type: TileType
     columns: int
     rows: int
     player_count: int
     speed: float  # frames per second
-
-

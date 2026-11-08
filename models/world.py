@@ -3,14 +3,19 @@ from models.grounds import arrange_in_pattern, generate_ground_item
 
 
 class World:
-    grounds: list[Ground]
-    players: list[Player]
-    time: int
+    __grounds: list[Ground]
+    __players: list[Player]
+    __time: int
 
     def __init__(self, config: WorldConfig) -> None:
         self.config = config
+        self.__bootstrap()
 
-    def _bootstrap_ground(self) -> list[Ground]:
+    @property
+    def grounds(self) -> list[Ground]:
+        return self.__grounds
+
+    def __bootstrap_ground(self) -> list[Ground]:
         grounds: list[Ground] = []
 
         for row in range(self.config.rows):
@@ -21,10 +26,10 @@ class World:
                 grounds.append(ground_item)
 
         return arrange_in_pattern(
-            tile_type=self.config.tile_type,
             grounds=grounds,
             rows=self.config.rows,
             columns=self.config.columns,
         )
 
-    def _bootstrap(self) -> None: ...
+    def __bootstrap(self) -> None:
+        self.__grounds = self.__bootstrap_ground()
