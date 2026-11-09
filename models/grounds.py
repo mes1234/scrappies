@@ -2,18 +2,76 @@ import random
 
 from models.abstractions import Ground, GroundType
 
+HOME_COLUMN_RATIO = 0.2
+WALL_CLUSTER_COUNT = 12
+WALL_MIN_LENGTH = 3
+WALL_MAX_LENGTH = 5
 
-def generate_ground_item(row: int, column: int, existing: list[Ground]) -> Ground:
-    picked = random.choice(list(GroundType))
 
-    if picked == GroundType.Water:
-        return WaterGround()
-    if picked == GroundType.Wall:
-        return WallGround()
-    if picked == GroundType.Home:
+def _home_columns(columns: int) -> tuple[int, int]:
+    offset = int(columns * HOME_COLUMN_RATIO)
+    return offset, columns - 1 - offset
+
+
+def _river_columns(columns: int) -> range:
+    width = max(1, columns // 10)
+    start = (columns - width) // 2
+    return range(start, start + width)
+
+
+def _is_free_for_wall(row: int, column: int, rows: int, columns: int) -> bool:
+    if column in _river_columns(columns):
+        return False
+    return not (
+        row == rows // 2 and any(abs(column - c) <= 1 for c in _home_columns(columns))
+    )
+
+
+def generate_wall_cells(rows: int, columns: int) -> set[tuple[int, int]]:
+    """Place straight wall segments, each at least WALL_MIN_LENGTH tiles long."""
+    walls: set[tuple[int, int]] = set()
+
+    for _ in range(WALL_CLUSTER_COUNT):
+        for _attempt in range(50):
+            length = random.randint(WALL_MIN_LENGTH, WALL_MAX_LENGTH)
+            d_row, d_column = random.choice(((0, 1), (1, 0)))
+            row = random.randrange(rows)
+            column = random.randrange(columns)
+            cells = [(row + i * d_row, column + i * d_column) for i in range(length)]
+            if all(
+                r < rows
+                and c < columns
+                and (r, c) not in walls
+                and _is_free_for_wall(r, c, rows, columns)
+                for r, c in cells
+            ):
+                walls.update(cells)
+                break
+
+    return walls
+
+
+def generate_ground_item(
+    row: int,
+    column: int,
+    existing: list[Ground],
+    rows: int,
+    columns: int,
+    walls: set[tuple[int, int]],
+) -> Ground:
+    home_row = rows // 2
+
+    if row == home_row and column in _home_columns(columns):
         return HomeGround()
-    if picked == GroundType.Plain:
-        return PlainGround()
+
+    if column in _river_columns(columns):
+        # Leave a ford at home row so both sides stay connected.
+        return PlainGround() if row == home_row else WaterGround()
+
+    if (row, column) in walls:
+        return WallGround()
+
+    return PlainGround()
 
 
 def arrange_in_pattern(
