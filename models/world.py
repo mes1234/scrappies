@@ -1,6 +1,5 @@
 from models.abstractions import Ground, Player, WorldConfig
 from models.grounds import (
-    arrange_in_pattern,
     generate_ground_item,
     generate_wall_cells,
 )
@@ -35,11 +34,7 @@ class World:
                 )
                 grounds.append(ground_item)
 
-        return arrange_in_pattern(
-            grounds=grounds,
-            rows=self.config.rows,
-            columns=self.config.columns,
-        )
+        return grounds
 
     def __bootstrap(self) -> None:
         self.__grounds = self.__bootstrap_ground()
