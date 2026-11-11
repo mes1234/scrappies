@@ -6,3 +6,7 @@
 - Before changing a file, check whether the code you would touch is part of an abstract class. If it is, leave it unchanged.
 - If a task seems to need a change to an abstract class, stop and ask the user first. Propose the change instead of making it.
 - Add new behavior in concrete subclasses or implementations instead.
+
+## Unit tests
+
+- Do not edit, rename, move or delete any unit tests. Agent can write unit test during its work, but finally should remove its temporary unit tests. Only human can write unit test. If unit test is written it is not changable

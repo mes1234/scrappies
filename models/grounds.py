@@ -75,24 +75,70 @@ def generate_ground_item(
 
 
 class PlainGround(Ground):
+
+    MAX_RESOURCE = 10
+
     def __init__(self) -> None:
         super().__init__()
         self.type = GroundType.Plain
+        self._wilderness = 0.5
+
+    @property
+    def wealth(self) -> float:
+        w = len(self.resources) / self.MAX_RESOURCE + random.uniform(-0.1, 0.1)
+
+        if w > 1.0:
+            return 1.0
+        if w < 0.0:
+            return 0.0
+        return w
 
 
 class WallGround(Ground):
     def __init__(self) -> None:
         super().__init__()
         self.type = GroundType.Wall
+        self._wilderness = 1.0
+
+    @property
+    def wealth(self) -> float:
+        return 0.0
 
 
 class WaterGround(Ground):
+
+    MAX_RESOURCE = 10
+
     def __init__(self) -> None:
         super().__init__()
         self.type = GroundType.Water
 
+    @property
+    def wealth(self) -> float:
+        w = len(self.resources) / self.MAX_RESOURCE + random.uniform(-0.1, 0.1)
+
+        if w > 1.0:
+            return 1.0
+        if w < 0.0:
+            return 0.0
+        return w
+
 
 class HomeGround(Ground):
+
+    MAX_RESOURCE = 100
+
     def __init__(self) -> None:
         super().__init__()
         self.type = GroundType.Home
+        self._wilderness = 0.0
+
+    @property
+    def wealth(self) -> float:
+        w = len(self.resources) / self.MAX_RESOURCE + random.uniform(-0.1, 0.1)
+
+        if w > 1.0:
+            return 1.0
+        if w < 0.0:
+            return 0.0
+        return w

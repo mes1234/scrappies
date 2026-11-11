@@ -1,7 +1,14 @@
 import arcade
 
-from models.abstractions import GroundType, WorldConfig
+from models.abstractions import Ground, GroundType, WorldConfig
 from models.world import World
+
+
+def get_ground_type(ground: Ground) -> GroundType:
+    ground_type = getattr(ground, "type", None)
+    if not isinstance(ground_type, GroundType):
+        raise TypeError(f"{type(ground).__name__} must define a valid GroundType")
+    return ground_type
 
 
 class WorldWindow(arcade.Window):
@@ -85,7 +92,7 @@ class WorldWindow(arcade.Window):
                 bottom,
                 self.TILE_SIZE,
                 self.TILE_SIZE,
-                self.GROUND_COLORS[ground.type],
+                self.GROUND_COLORS[get_ground_type(ground)],
             )
             arcade.draw_lbwh_rectangle_outline(
                 left,

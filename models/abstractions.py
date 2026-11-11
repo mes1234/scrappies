@@ -3,7 +3,6 @@ from dataclasses import dataclass
 from enum import Enum
 import random
 
-
 class GroundType(Enum):
     Plain = "plain"
     Wall = "wall"
@@ -89,13 +88,33 @@ class Player(ABC):
 
 class Ground(ABC):
     resources: list[Resource]
+    occupants: list[Player]
+
+    _wilderness: float
+
+    @property
+    def wilderness(self) -> float:
+        """wilder the ground item, harder it is to get some resource from it"""
+        return self._wilderness
+
+    @property
+    @abstractmethod
+    def wealth(self) -> float:
+        """
+        Defines wealth of given ground item, most likely more wealth mean more resources, can be a trick of gods....
+        """
 
     def add_resource(self, resource: Resource) -> None:
+        """only gods can add resources to ground (aka World)"""
         self.resources.append(resource)
 
     def get_resource(self) -> Resource | None:
+        """some players can try to obtain resource, but sometimes they fail"""
         if not self.resources:
             return None
+        if random.random() < self.wilderness:
+            return None
+
         return self.resources.pop(random.randrange(len(self.resources)))
 
 
