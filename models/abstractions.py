@@ -12,6 +12,7 @@ class GroundType(Enum):
 
 
 class Direction(Enum):
+    Here = "here"
     North = "north"
     North_East = "north_east"
     East = "east"
@@ -89,7 +90,7 @@ class Player(ABC):
 
     @abstractmethod
     def make_decision(
-        self, current_ground: Ground, surroundings: dict[Direction, Ground]
+        self, surroundings: dict[Direction, tuple[Ground, list[Player]]]
     ) -> PlayerDecision: ...
 
 

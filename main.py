@@ -1,6 +1,12 @@
+from collections.abc import Sequence
+from math import pi, sin
+from queue import Empty, SimpleQueue
+from threading import Event, Lock, Thread
+from time import monotonic
+
 import arcade
 
-from models.abstractions import Ground, GroundType, WorldConfig
+from models.abstractions import Ground, GroundType, Player, PlayerDecision, WorldConfig
 from models.world import World
 
 
@@ -11,6 +17,13 @@ def get_ground_type(ground: Ground) -> GroundType:
     return ground_type
 
 
+def get_player_name(player: Player) -> str:
+    name = getattr(player, "name", None)
+    if not isinstance(name, str):
+        raise TypeError(f"{type(player).__name__} must define a player name")
+    return name
+
+
 class WorldWindow(arcade.Window):
     COLUMNS = 40
     ROWS = 30
@@ -19,6 +32,7 @@ class WorldWindow(arcade.Window):
     MAP_BOTTOM = 80
     WINDOW_WIDTH = COLUMNS * TILE_SIZE + 2 * MAP_LEFT
     WINDOW_HEIGHT = MAP_BOTTOM + ROWS * TILE_SIZE + 60
+    MOVE_DURATION = 0.65
 
     GROUND_COLORS = {
         GroundType.Plain: (111, 139, 91),
@@ -26,7 +40,11 @@ class WorldWindow(arcade.Window):
         GroundType.Water: (62, 126, 171),
         GroundType.Home: (202, 151, 78),
     }
-    PLAYER_COLOR = (245, 214, 96)
+    PLAYER_COLORS = {
+        "A": (245, 214, 96),
+        "B": (245, 125, 190),
+        "Beast": (234, 98, 83),
+    }
 
     LEGEND_ITEMS = (
         (GroundType.Plain, "Plain"),
@@ -39,6 +57,14 @@ class WorldWindow(arcade.Window):
         self.world = World(
             WorldConfig(columns=self.COLUMNS, rows=self.ROWS, player_count=0, speed=30)
         )
+        self.world_lock = Lock()
+        self.stop_world = Event()
+        self.world_errors: SimpleQueue[Exception] = SimpleQueue()
+        self.player_transitions = [
+            (get_player_name(player), (pos.row, pos.col), (pos.row, pos.col), None)
+            for player, pos in self.world.players
+        ]
+        self.transition_started = monotonic()
         super().__init__(
             self.WINDOW_WIDTH,
             self.WINDOW_HEIGHT,
@@ -59,24 +85,84 @@ class WorldWindow(arcade.Window):
             )
             for index, (_, label) in enumerate(self.LEGEND_ITEMS)
         ]
-        self.player_legend_text = arcade.Text(
-            "Players",
-            self.MAP_LEFT + 22 + len(self.LEGEND_ITEMS) * 100,
-            34,
-            (220, 224, 230),
+        self.player_legend_texts = [
+            arcade.Text(
+                name,
+                self.MAP_LEFT + 22 + (len(self.LEGEND_ITEMS) + index) * 100,
+                34,
+                (220, 224, 230),
+                14,
+            )
+            for index, name in enumerate(self.PLAYER_COLORS)
+        ]
+        self.player_texts = {
+            name: arcade.Text(
+                "!" if name == "Beast" else name,
+                0,
+                0,
+                (28, 31, 38),
+                9,
+                anchor_x="center",
+                anchor_y="center",
+            )
+            for name in self.PLAYER_COLORS
+        }
+        self.rest_text = arcade.Text("Zzzz", 0, 0, (245, 245, 255), 10)
+        self.quit_text = arcade.Text(
+            "Esc or Q to quit",
+            self.WINDOW_WIDTH - 135,
+            self.WINDOW_HEIGHT - 32,
+            (170, 176, 185),
             14,
         )
-        self.quit_text = arcade.Text(
-            "Esc or Q to quit", self.MAP_LEFT + 600, 34, (170, 176, 185), 14
-        )
+
+    def check_world_error(self) -> None:
+        try:
+            error = self.world_errors.get_nowait()
+        except Empty:
+            pass
+        else:
+            raise RuntimeError("World stepping failed") from error
 
     def on_draw(self) -> None:
+        self.check_world_error()
+        with self.world_lock:
+            ground_types = [get_ground_type(ground) for ground in self.world.grounds]
+            player_transitions = self.player_transitions
+            transition_started = self.transition_started
+
         self.clear((28, 31, 38))
         self.title_text.draw()
 
-        self.show_grounds()
-        self.show_players()
+        self.show_grounds(ground_types)
+        self.show_players(player_transitions, monotonic() - transition_started)
         self.show_legend()
+
+    def step_world(self) -> None:
+        next_step = monotonic() + 1.0
+        while not self.stop_world.wait(max(0.0, next_step - monotonic())):
+            try:
+                with self.world_lock:
+                    old_positions = {
+                        player: (pos.row, pos.col) for player, pos in self.world.players
+                    }
+                    self.world.step()
+                    self.player_transitions = [
+                        (
+                            get_player_name(player),
+                            old_positions.get(player, (pos.row, pos.col)),
+                            (pos.row, pos.col),
+                            self.world.decision[player][-1]
+                            if self.world.decision[player]
+                            else None,
+                        )
+                        for player, pos in self.world.players
+                    ]
+                    self.transition_started = monotonic()
+            except Exception as error:
+                self.world_errors.put(error)
+                return
+            next_step = max(next_step + 1.0, monotonic())
 
     def on_key_press(self, symbol: int, modifiers: int) -> None:
         _ = modifiers
@@ -89,29 +175,89 @@ class WorldWindow(arcade.Window):
                 self.MAP_LEFT + index * 100, 32, 16, 16, self.GROUND_COLORS[ground_type]
             )
             self.legend_texts[index].draw()
-        arcade.draw_circle_filled(
-            self.MAP_LEFT + len(self.LEGEND_ITEMS) * 100 + 8,
-            40,
-            7,
-            self.PLAYER_COLOR,
-        )
-        self.player_legend_text.draw()
+        for index, color in enumerate(self.PLAYER_COLORS.values()):
+            arcade.draw_circle_filled(
+                self.MAP_LEFT + (len(self.LEGEND_ITEMS) + index) * 100 + 8,
+                40,
+                7,
+                color,
+            )
+            self.player_legend_texts[index].draw()
         self.quit_text.draw()
 
-    def show_players(self) -> None:
-        for _, position in self.world.players:
-            center_x = (
-                self.MAP_LEFT + position.col * self.TILE_SIZE + self.TILE_SIZE / 2
-            )
-            center_y = (
-                self.MAP_BOTTOM
-                + (self.ROWS - 1 - position.row) * self.TILE_SIZE
-                + self.TILE_SIZE / 2
-            )
-            arcade.draw_circle_filled(center_x, center_y, 6, self.PLAYER_COLOR)
+    def show_players(
+        self,
+        transitions: Sequence[
+            tuple[str, tuple[int, int], tuple[int, int], PlayerDecision | None]
+        ],
+        elapsed: float,
+    ) -> None:
+        progress = min(1.0, max(0.0, elapsed / self.MOVE_DURATION))
+        tail = progress * progress
+        head = 1.0 - (1.0 - progress) ** 2
+        previous_scissor = self.ctx.scissor
+        self.ctx.scissor = (
+            self.MAP_LEFT,
+            self.MAP_BOTTOM,
+            self.COLUMNS * self.TILE_SIZE,
+            self.ROWS * self.TILE_SIZE,
+        )
+        try:
+            for name, (old_row, old_column), (row, column), decision in transitions:
+                color = self.PLAYER_COLORS[name]
+                label = self.player_texts[name]
+                row_delta = row - old_row
+                column_delta = column - old_column
+                if abs(row_delta) > self.ROWS / 2:
+                    row_delta -= self.ROWS if row_delta > 0 else -self.ROWS
+                if abs(column_delta) > self.COLUMNS / 2:
+                    column_delta -= self.COLUMNS if column_delta > 0 else -self.COLUMNS
 
-    def show_grounds(self) -> None:
-        for index, ground in enumerate(self.world.grounds):
+                for index in range(5):
+                    fraction = tail + (head - tail) * index / 4
+                    current_row = (old_row + row_delta * fraction + 0.5) % self.ROWS
+                    current_column = (
+                        old_column + column_delta * fraction + 0.5
+                    ) % self.COLUMNS
+                    x = self.MAP_LEFT + current_column * self.TILE_SIZE
+                    y = self.MAP_BOTTOM + (self.ROWS - current_row) * self.TILE_SIZE
+                    radius = 4.5 + 1.5 * index / 4
+                    width = self.COLUMNS * self.TILE_SIZE
+                    height = self.ROWS * self.TILE_SIZE
+                    x_offsets = [0]
+                    y_offsets = [0]
+                    if x - radius < self.MAP_LEFT:
+                        x_offsets.append(width)
+                    if x + radius > self.MAP_LEFT + width:
+                        x_offsets.append(-width)
+                    if y - radius < self.MAP_BOTTOM:
+                        y_offsets.append(height)
+                    if y + radius > self.MAP_BOTTOM + height:
+                        y_offsets.append(-height)
+                    for x_offset in x_offsets:
+                        for y_offset in y_offsets:
+                            arcade.draw_circle_filled(
+                                x + x_offset, y + y_offset, radius, color
+                            )
+                            if index == 4:
+                                label.x = x + x_offset
+                                label.y = y + y_offset
+                                label.draw()
+                                if decision == PlayerDecision.Rest:
+                                    self.rest_text.x = min(
+                                        x + x_offset + 8,
+                                        self.MAP_LEFT + width - self.rest_text.content_width,
+                                    )
+                                    self.rest_text.y = min(
+                                        y + y_offset + 8 + 2 * sin(2 * pi * elapsed),
+                                        self.MAP_BOTTOM + height - self.rest_text.content_height,
+                                    )
+                                    self.rest_text.draw()
+        finally:
+            self.ctx.scissor = previous_scissor
+
+    def show_grounds(self, ground_types: list[GroundType]) -> None:
+        for index, ground_type in enumerate(ground_types):
             row, column = divmod(index, self.COLUMNS)
             left = self.MAP_LEFT + column * self.TILE_SIZE
             bottom = self.MAP_BOTTOM + (self.ROWS - 1 - row) * self.TILE_SIZE
@@ -120,7 +266,7 @@ class WorldWindow(arcade.Window):
                 bottom,
                 self.TILE_SIZE,
                 self.TILE_SIZE,
-                self.GROUND_COLORS[get_ground_type(ground)],
+                self.GROUND_COLORS[ground_type],
             )
             arcade.draw_lbwh_rectangle_outline(
                 left,
@@ -133,8 +279,15 @@ class WorldWindow(arcade.Window):
 
 
 def run() -> None:
-    WorldWindow()
-    arcade.run()
+    window = WorldWindow()
+    worker = Thread(target=window.step_world, name="world-step")
+    worker.start()
+    try:
+        arcade.run()
+    finally:
+        window.stop_world.set()
+        worker.join()
+    window.check_world_error()
 
 
 if __name__ == "__main__":
