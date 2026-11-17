@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from enum import Enum
 import random
 
+
 class GroundType(Enum):
     Plain = "plain"
     Wall = "wall"
@@ -25,6 +26,12 @@ class ResourcesType(Enum):
     Food = "food"
     Stuff = "stuff"
     Poison = "poison"
+
+
+@dataclass
+class Position:
+    row: int
+    col: int
 
 
 class Clamped:
@@ -88,7 +95,6 @@ class Player(ABC):
 
 class Ground(ABC):
     resources: list[Resource]
-    occupants: list[Player]
 
     _wilderness: float
 

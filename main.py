@@ -26,6 +26,7 @@ class WorldWindow(arcade.Window):
         GroundType.Water: (62, 126, 171),
         GroundType.Home: (202, 151, 78),
     }
+    PLAYER_COLOR = (245, 214, 96)
 
     LEGEND_ITEMS = (
         (GroundType.Plain, "Plain"),
@@ -58,6 +59,13 @@ class WorldWindow(arcade.Window):
             )
             for index, (_, label) in enumerate(self.LEGEND_ITEMS)
         ]
+        self.player_legend_text = arcade.Text(
+            "Players",
+            self.MAP_LEFT + 22 + len(self.LEGEND_ITEMS) * 100,
+            34,
+            (220, 224, 230),
+            14,
+        )
         self.quit_text = arcade.Text(
             "Esc or Q to quit", self.MAP_LEFT + 600, 34, (170, 176, 185), 14
         )
@@ -67,6 +75,7 @@ class WorldWindow(arcade.Window):
         self.title_text.draw()
 
         self.show_grounds()
+        self.show_players()
         self.show_legend()
 
     def on_key_press(self, symbol: int, modifiers: int) -> None:
@@ -80,7 +89,26 @@ class WorldWindow(arcade.Window):
                 self.MAP_LEFT + index * 100, 32, 16, 16, self.GROUND_COLORS[ground_type]
             )
             self.legend_texts[index].draw()
+        arcade.draw_circle_filled(
+            self.MAP_LEFT + len(self.LEGEND_ITEMS) * 100 + 8,
+            40,
+            7,
+            self.PLAYER_COLOR,
+        )
+        self.player_legend_text.draw()
         self.quit_text.draw()
+
+    def show_players(self) -> None:
+        for _, position in self.world.players:
+            center_x = (
+                self.MAP_LEFT + position.col * self.TILE_SIZE + self.TILE_SIZE / 2
+            )
+            center_y = (
+                self.MAP_BOTTOM
+                + (self.ROWS - 1 - position.row) * self.TILE_SIZE
+                + self.TILE_SIZE / 2
+            )
+            arcade.draw_circle_filled(center_x, center_y, 6, self.PLAYER_COLOR)
 
     def show_grounds(self) -> None:
         for index, ground in enumerate(self.world.grounds):
