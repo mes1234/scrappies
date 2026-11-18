@@ -9,6 +9,7 @@ from models.abstractions import (
     Position,
     WorldConfig,
 )
+from models.game_rules import GameRules
 from models.grounds import (
     WallGround,
     WaterGround,
@@ -27,7 +28,8 @@ class World:
 
     def __init__(self, config: WorldConfig) -> None:
         self.config = config
-        self.__bootstrap()
+        self.__grounds = self.__bootstrap_ground()
+        self.__players = self.__bootstrap_players()
         self.__decisions: dict[Player, list[PlayerDecision]] = {
             player: [] for player, _ in self.__players
         }
@@ -40,8 +42,9 @@ class World:
             history = self.__decisions.setdefault(player, [])
             history.append(player_decision)
             del history[:-10]
-            new_position = self.__evaluate_player_decision(position, player_decision)
-            self.__players[index] = (player, new_position)
+            self.__players[index] = self.__evaluate_player_decision(
+                player, position, player_decision
+            )
 
         if monotonic() >= self.__next_beast_spawn:
             positions = [
@@ -69,34 +72,28 @@ class World:
         return self.__decisions
 
     def __evaluate_player_decision(
-        self, current_position: Position, player_decision: PlayerDecision
-    ) -> Position:
+        self,
+        player: Player,
+        current_position: Position,
+        player_decision: PlayerDecision,
+    ) -> tuple[Player, Position]:
         """
         based on current position and player decision return new player position
         NOTICE: currently only movement is implemented
         Player cannot move through wall or water
         """
-        offsets = {
-            PlayerDecision.Go_North: (-1, 0),
-            PlayerDecision.Go_North_East: (-1, 1),
-            PlayerDecision.Go_East: (0, 1),
-            PlayerDecision.Go_South_East: (1, 1),
-            PlayerDecision.Go_South: (1, 0),
-            PlayerDecision.Go_South_West: (1, -1),
-            PlayerDecision.Go_West: (0, -1),
-            PlayerDecision.Go_North_West: (-1, -1),
-        }
-        offset = offsets.get(player_decision)
-        if offset is None:
-            return current_position
-
-        row = (current_position.row + offset[0]) % self.config.rows
-        column = (current_position.col + offset[1]) % self.config.columns
-        destination = self.__grounds[row * self.config.columns + column]
-        if isinstance(destination, (WallGround, WaterGround)):
-            return current_position
-
-        return Position(row, column)
+        game_rules = GameRules()
+        other_players_in_position: list[Player] = (
+            []
+        )  # TODO get other players in this position
+        return game_rules.evaluate_player_decision(
+            self.grounds,
+            self.config,
+            player,
+            current_position,
+            player_decision,
+            other_players_in_position,
+        )
 
     def __get_player_context(
         self, position: Position
@@ -175,7 +172,3 @@ class World:
             (player_1, positions[0]),
             (player_2, Position(second.row, second.col)),
         ]
-
-    def __bootstrap(self) -> None:
-        self.__grounds = self.__bootstrap_ground()
-        self.__players = self.__bootstrap_players()
