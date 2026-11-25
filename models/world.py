@@ -14,6 +14,7 @@ from models.grounds import (
     HomeGround,
     WallGround,
     WaterGround,
+    generate_bridge_rows,
     generate_ground_item,
     generate_wall_cells,
 )
@@ -151,6 +152,7 @@ class World:
 
     def __bootstrap_ground(self) -> list[Ground]:
         grounds: list[Ground] = []
+        bridge_rows = generate_bridge_rows(self.config.rows)
         walls = generate_wall_cells(self.config.rows, self.config.columns)
 
         for row in range(self.config.rows):
@@ -168,6 +170,7 @@ class World:
                     rows=self.config.rows,
                     columns=self.config.columns,
                     walls=walls,
+                    bridge_rows=bridge_rows,
                 )
                 if not isinstance(ground_item, (WallGround, WaterGround)):
                     if random.random() < self.RESOURCE_CHANCE:

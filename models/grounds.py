@@ -6,6 +6,7 @@ HOME_COLUMN_RATIO = 0.2
 WALL_CLUSTER_COUNT = 12
 WALL_MIN_LENGTH = 3
 WALL_MAX_LENGTH = 5
+BRIDGE_COUNT = 4
 
 
 def _home_columns(columns: int) -> tuple[int, int]:
@@ -14,9 +15,19 @@ def _home_columns(columns: int) -> tuple[int, int]:
 
 
 def _river_columns(columns: int) -> range:
-    width = max(1, columns // 10)
-    start = (columns - width) // 2
-    return range(start, start + width)
+    river_column = columns // 2
+    return range(river_column, river_column + 1)
+
+
+def generate_bridge_rows(rows: int) -> set[int]:
+    """Select four distinct random rows for crossings over the river."""
+    candidates = [
+        row
+        for row in range(1, rows - 1)
+    ]
+    if len(candidates) < BRIDGE_COUNT:
+        raise ValueError("Map must have enough interior rows for four bridges")
+    return set(random.sample(candidates, BRIDGE_COUNT))
 
 
 def _is_free_for_wall(row: int, column: int, rows: int, columns: int) -> bool:
@@ -58,6 +69,7 @@ def generate_ground_item(
     rows: int,
     columns: int,
     walls: set[tuple[int, int]],
+    bridge_rows: set[int] | None = None,
 ) -> Ground:
     home_row = rows // 2
 
@@ -65,8 +77,12 @@ def generate_ground_item(
         return HomeGround()
 
     if column in _river_columns(columns):
-        # Leave a ford at home row so both sides stay connected.
-        return PlainGround() if row == home_row else WaterGround()
+        is_bridge = (
+            row == home_row
+            if bridge_rows is None
+            else row in bridge_rows
+        )
+        return PlainGround() if is_bridge else WaterGround()
 
     if (row, column) in walls:
         return WallGround()
