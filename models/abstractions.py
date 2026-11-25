@@ -83,6 +83,7 @@ class Resource(ABC): ...
 
 class Player(ABC):
 
+    position: Position
     stamina: Clamped
     health: Clamped
     happiness: Clamped

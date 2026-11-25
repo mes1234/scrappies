@@ -61,8 +61,13 @@ class WorldWindow(arcade.Window):
         self.stop_world = Event()
         self.world_errors: SimpleQueue[Exception] = SimpleQueue()
         self.player_transitions = [
-            (get_player_name(player), (pos.row, pos.col), (pos.row, pos.col), None)
-            for player, pos in self.world.players
+            (
+                get_player_name(player),
+                (player.position.row, player.position.col),
+                (player.position.row, player.position.col),
+                None,
+            )
+            for player in self.world.players
         ]
         self.transition_started = monotonic()
         super().__init__(
@@ -144,19 +149,23 @@ class WorldWindow(arcade.Window):
             try:
                 with self.world_lock:
                     old_positions = {
-                        player: (pos.row, pos.col) for player, pos in self.world.players
+                        player: (player.position.row, player.position.col)
+                        for player in self.world.players
                     }
                     self.world.step()
                     self.player_transitions = [
                         (
                             get_player_name(player),
-                            old_positions.get(player, (pos.row, pos.col)),
-                            (pos.row, pos.col),
+                            old_positions.get(
+                                player,
+                                (player.position.row, player.position.col),
+                            ),
+                            (player.position.row, player.position.col),
                             self.world.decision[player][-1]
                             if self.world.decision[player]
                             else None,
                         )
-                        for player, pos in self.world.players
+                        for player in self.world.players
                     ]
                     self.transition_started = monotonic()
             except Exception as error:
