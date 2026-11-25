@@ -78,7 +78,8 @@ class PlayerState(Enum):
     Dead = "dead"
 
 
-class Resource(ABC): ...
+class Resource(ABC):
+    amount: Clamped
 
 
 class Player(ABC):

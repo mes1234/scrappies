@@ -81,6 +81,7 @@ class PlainGround(Ground):
     def __init__(self) -> None:
         super().__init__()
         self.type = GroundType.Plain
+        self.resources = []
         self._wilderness = 0.5
 
     @property
@@ -98,6 +99,7 @@ class WallGround(Ground):
     def __init__(self) -> None:
         super().__init__()
         self.type = GroundType.Wall
+        self.resources = []
         self._wilderness = 1.0
 
     @property
@@ -112,6 +114,8 @@ class WaterGround(Ground):
     def __init__(self) -> None:
         super().__init__()
         self.type = GroundType.Water
+        self.resources = []
+        self._wilderness = 1.0
 
     @property
     def wealth(self) -> float:
@@ -131,6 +135,7 @@ class HomeGround(Ground):
     def __init__(self) -> None:
         super().__init__()
         self.type = GroundType.Home
+        self.resources = []
         self._wilderness = 0.0
 
     @property

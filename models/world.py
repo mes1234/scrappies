@@ -17,10 +17,13 @@ from models.grounds import (
     generate_wall_cells,
 )
 from models.players import Beast, Scrapper
+from models.resources import FoodResource
 
 
 class World:
     BEAST_SPAWN_INTERVAL = 10.0
+    MAX_BEASTS = 5
+    RESOURCE_CHANCE = 0.1
 
     __grounds: list[Ground]
     __players: list[Player]
@@ -47,17 +50,21 @@ class World:
             )
 
         if monotonic() >= self.__next_beast_spawn:
-            positions = [
-                Position(*divmod(index, self.config.columns))
-                for index, ground in enumerate(self.__grounds)
-                if not isinstance(ground, (WallGround, WaterGround))
-            ]
-            if not positions:
-                raise RuntimeError("Cannot spawn a beast: map has no passable tiles")
-            beast = Beast()
-            beast.position = random.choice(positions)
-            self.__players.append(beast)
-            self.__decisions[beast] = []
+            beast_count = sum(
+                isinstance(player, Beast) for player in self.__players
+            )
+            if beast_count < self.MAX_BEASTS:
+                positions = [
+                    Position(*divmod(index, self.config.columns))
+                    for index, ground in enumerate(self.__grounds)
+                    if not isinstance(ground, (WallGround, WaterGround))
+                ]
+                if not positions:
+                    raise RuntimeError("Cannot spawn a beast: map has no passable tiles")
+                beast = Beast()
+                beast.position = random.choice(positions)
+                self.__players.append(beast)
+                self.__decisions[beast] = []
             self.__next_beast_spawn += self.BEAST_SPAWN_INTERVAL
 
     @property
@@ -161,6 +168,9 @@ class World:
                     columns=self.config.columns,
                     walls=walls,
                 )
+                if not isinstance(ground_item, (WallGround, WaterGround)):
+                    if random.random() < self.RESOURCE_CHANCE:
+                        ground_item.add_resource(FoodResource(random.random()))
                 grounds.append(ground_item)
 
         return grounds

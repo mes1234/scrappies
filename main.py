@@ -1,7 +1,5 @@
 from collections.abc import Sequence
 from math import pi, sin
-from queue import Empty, SimpleQueue
-from threading import Event, Lock, Thread
 from time import monotonic
 
 import arcade
@@ -32,7 +30,7 @@ class WorldWindow(arcade.Window):
     MAP_BOTTOM = 80
     WINDOW_WIDTH = COLUMNS * TILE_SIZE + 2 * MAP_LEFT
     WINDOW_HEIGHT = MAP_BOTTOM + ROWS * TILE_SIZE + 60
-    MOVE_DURATION = 0.65
+    MOVE_DURATION = 1.0
 
     GROUND_COLORS = {
         GroundType.Plain: (111, 139, 91),
@@ -40,6 +38,8 @@ class WorldWindow(arcade.Window):
         GroundType.Water: (62, 126, 171),
         GroundType.Home: (202, 151, 78),
     }
+    RESOURCE_COLOR = (232, 196, 86)
+    RESOURCE_RADIUS = 2.5
     PLAYER_COLORS = {
         "A": (245, 214, 96),
         "B": (245, 125, 190),
@@ -55,11 +55,9 @@ class WorldWindow(arcade.Window):
 
     def __init__(self) -> None:
         self.world = World(
-            WorldConfig(columns=self.COLUMNS, rows=self.ROWS, player_count=0, speed=30)
+            WorldConfig(columns=self.COLUMNS, rows=self.ROWS, player_count=0, speed=1)
         )
-        self.world_lock = Lock()
-        self.stop_world = Event()
-        self.world_errors: SimpleQueue[Exception] = SimpleQueue()
+        self.world_update_elapsed = 0.0
         self.player_transitions = [
             (
                 get_player_name(player),
@@ -74,7 +72,6 @@ class WorldWindow(arcade.Window):
             self.WINDOW_WIDTH,
             self.WINDOW_HEIGHT,
             "Scrappies world demo",
-            draw_rate=1 / self.world.config.speed,
         )
 
         self.title_text = arcade.Text(
@@ -121,57 +118,64 @@ class WorldWindow(arcade.Window):
             14,
         )
 
-    def check_world_error(self) -> None:
-        try:
-            error = self.world_errors.get_nowait()
-        except Empty:
-            pass
-        else:
-            raise RuntimeError("World stepping failed") from error
-
     def on_draw(self) -> None:
-        self.check_world_error()
-        with self.world_lock:
-            ground_types = [get_ground_type(ground) for ground in self.world.grounds]
-            player_transitions = self.player_transitions
-            transition_started = self.transition_started
+        ground_types = [get_ground_type(ground) for ground in self.world.grounds]
+        resource_coverages = [
+            self.get_resource_coverage(ground) for ground in self.world.grounds
+        ]
+        player_transitions = self.player_transitions
+        transition_started = self.transition_started
 
         self.clear((28, 31, 38))
         self.title_text.draw()
 
-        self.show_grounds(ground_types)
+        self.show_grounds(ground_types, resource_coverages)
         self.show_players(player_transitions, monotonic() - transition_started)
         self.show_legend()
 
-    def step_world(self) -> None:
-        next_step = monotonic() + 1.0
-        while not self.stop_world.wait(max(0.0, next_step - monotonic())):
-            try:
-                with self.world_lock:
-                    old_positions = {
-                        player: (player.position.row, player.position.col)
-                        for player in self.world.players
-                    }
-                    self.world.step()
-                    self.player_transitions = [
-                        (
-                            get_player_name(player),
-                            old_positions.get(
-                                player,
-                                (player.position.row, player.position.col),
-                            ),
-                            (player.position.row, player.position.col),
-                            self.world.decision[player][-1]
-                            if self.world.decision[player]
-                            else None,
-                        )
-                        for player in self.world.players
-                    ]
-                    self.transition_started = monotonic()
-            except Exception as error:
-                self.world_errors.put(error)
-                return
-            next_step = max(next_step + 1.0, monotonic())
+    @staticmethod
+    def get_resource_coverage(ground: Ground) -> float:
+        total_amount = sum(resource.amount for resource in ground.resources)
+        if total_amount <= 0.0:
+            return 0.0
+        if total_amount <= 0.25:
+            return 0.25
+        if total_amount <= 0.5:
+            return 0.5
+        if total_amount <= 0.75:
+            return 0.75
+        return 1.0
+
+    def on_update(self, delta_time: float) -> None:
+        if self.world.config.speed <= 0:
+            return
+
+        self.world_update_elapsed += delta_time
+        update_interval = 1.0 / self.world.config.speed
+        if self.world_update_elapsed < update_interval:
+            return
+
+        self.world_update_elapsed %= update_interval
+        old_positions = {
+            player: (player.position.row, player.position.col)
+            for player in self.world.players
+        }
+        self.world.step()
+        self.player_transitions = [
+            (
+                get_player_name(player),
+                old_positions.get(
+                    player,
+                    (player.position.row, player.position.col),
+                ),
+                (player.position.row, player.position.col),
+                self.world.decision[player][-1]
+                if self.world.decision[player]
+                else None,
+            )
+            for player in self.world.players
+        ]
+        self.transition_started = monotonic()
 
     def on_key_press(self, symbol: int, modifiers: int) -> None:
         _ = modifiers
@@ -265,8 +269,14 @@ class WorldWindow(arcade.Window):
         finally:
             self.ctx.scissor = previous_scissor
 
-    def show_grounds(self, ground_types: list[GroundType]) -> None:
-        for index, ground_type in enumerate(ground_types):
+    def show_grounds(
+        self,
+        ground_types: list[GroundType],
+        resource_coverages: list[float],
+    ) -> None:
+        for index, (ground_type, resource_coverage) in enumerate(
+            zip(ground_types, resource_coverages)
+        ):
             row, column = divmod(index, self.COLUMNS)
             left = self.MAP_LEFT + column * self.TILE_SIZE
             bottom = self.MAP_BOTTOM + (self.ROWS - 1 - row) * self.TILE_SIZE
@@ -285,18 +295,56 @@ class WorldWindow(arcade.Window):
                 (37, 43, 48),
                 border_width=1,
             )
+            if resource_coverage > 0.0:
+                covered_height = self.TILE_SIZE * resource_coverage
+                radius = min(
+                    self.RESOURCE_RADIUS,
+                    self.TILE_SIZE / 2,
+                    covered_height / 2,
+                )
+                arcade.draw_lbwh_rectangle_filled(
+                    left + radius,
+                    bottom,
+                    self.TILE_SIZE - 2 * radius,
+                    covered_height,
+                    self.RESOURCE_COLOR,
+                )
+                arcade.draw_lbwh_rectangle_filled(
+                    left,
+                    bottom + radius,
+                    self.TILE_SIZE,
+                    covered_height - 2 * radius,
+                    self.RESOURCE_COLOR,
+                )
+                arcade.draw_circle_filled(
+                    left + radius,
+                    bottom + radius,
+                    radius,
+                    self.RESOURCE_COLOR,
+                )
+                arcade.draw_circle_filled(
+                    left + self.TILE_SIZE - radius,
+                    bottom + radius,
+                    radius,
+                    self.RESOURCE_COLOR,
+                )
+                arcade.draw_circle_filled(
+                    left + radius,
+                    bottom + covered_height - radius,
+                    radius,
+                    self.RESOURCE_COLOR,
+                )
+                arcade.draw_circle_filled(
+                    left + self.TILE_SIZE - radius,
+                    bottom + covered_height - radius,
+                    radius,
+                    self.RESOURCE_COLOR,
+                )
 
 
 def run() -> None:
     window = WorldWindow()
-    worker = Thread(target=window.step_world, name="world-step")
-    worker.start()
-    try:
-        arcade.run()
-    finally:
-        window.stop_world.set()
-        worker.join()
-    window.check_world_error()
+    arcade.run()
 
 
 if __name__ == "__main__":
