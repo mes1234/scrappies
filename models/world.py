@@ -11,6 +11,7 @@ from models.abstractions import (
 )
 from models.game_rules import GameRules
 from models.grounds import (
+    HomeGround,
     WallGround,
     WaterGround,
     generate_ground_item,
@@ -176,21 +177,19 @@ class World:
         return grounds
 
     def __bootstrap_players(self) -> list[Player]:
-        positions = [
+        home_positions = [
             Position(row, column)
-            for row in range(1, self.config.rows - 1)
-            for column in range(1, self.config.columns - 1)
-            if not isinstance(
-                self.__grounds[row * self.config.columns + column],
-                (WallGround, WaterGround),
+            for row in range(self.config.rows)
+            for column in range(self.config.columns)
+            if isinstance(
+                self.__grounds[row * self.config.columns + column], HomeGround
             )
         ]
-        if not positions:
-            raise ValueError("Cannot place players: map has no passable interior tiles")
+        if len(home_positions) < 2:
+            raise ValueError("Cannot place players: map must have two home tiles")
 
         player_1 = Scrapper("A")
         player_2 = Scrapper("B")
-        second = positions[1 % len(positions)]
-        player_1.position = positions[0]
-        player_2.position = Position(second.row, second.col)
+        player_1.position = home_positions[0]
+        player_2.position = home_positions[1]
         return [player_1, player_2]
